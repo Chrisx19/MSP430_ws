@@ -5,6 +5,7 @@ void startI2CTransmission(void);
 
 int main(void)
 {
+    PM5CTL0 &= ~LOCKLPM5;
     WDTCTL = WDTPW | WDTHOLD;  // Stop watchdog timer
 
     // Initialize I2C communication
