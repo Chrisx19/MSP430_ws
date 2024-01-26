@@ -1,39 +1,61 @@
-#include <msp430.h> 
-
-
-unsigned int timerCount = 0;    // Keep track of timer ticks
+#include <msp430.h>
+#include <stdint.h>
 
 /**
  * main.c
  */
-int main(void)
+
+void init(void);
+
+uint32_t timerCount = 0;
+
+void clkInit(void)
 {
-    PM5CTL0 &= ~LOCKLPM5;
-    WDTCTL = WDTPW | WDTHOLD;   // stop watchdog timer
+    TA0CTL |= 0x0100; //0000 0001 0000 0000 SETTING ACLK ~ TASSEL
+    TA0CTL |= 0x0010; //0000 0001 0001 0000 SETTING UP MODE which correspond to TAXCCR0
+    TA0CTL |= 0x0004; //0000 0001 0001 0100 CLEAR; automatic reset when counter is up max
 
-    P1DIR |= 0x01;  // Set direction of P1.0 to out
+    TA0CCR0 = 4096; //Set 32768/8=4096 to set the pulse faster; for Capture & control threshold
+    TA0CCTL0 |= 0x0010; //enables ISR on capture & compare mode
 
-    TA0CTL |= 0x0100;    // Choose ACLK
-    TA0CTL |= 0x0010;    // Count up mode
-    TA0CTL |= 0x0004;    // Clear the timer;
-
-    TA0CCTL0 = 0x0010;          // Enable interrupt in capture and control register
-    TA0CCR0 = 4096;             // Set capture and control threshold to 1/8 of 32kHz clock
-
-    __bis_SR_register(LPM0_bits + GIE);       // Enter LPM0, enable interrupts
 }
 
+int main(void)
+{
+    init();
+    clkInit();
+
+    // Configure P1.0 as output for LED1
+    P1DIR |= 0x01;  // //BIT0
+    P4DIR |= 0x40; //0100 0000 Set P4.6 to output direction
+
+//    while(1) {
+//        if((P1IN & BIT1) == 0x00) {  // Check if button is pressed
+//            P1OUT |= 0x01;    // Turn on LED1
+//
+//        }
+//        else if (!(P4IN & 0x20)) {
+//            P4OUT |= 0x40;    //BIT6
+//        } else {
+//            P1OUT &= ~0x01;   // Turn off LED1
+//            P4OUT &= ~0x40;
+//        }
+//    }
+    __bis_SR_register(LPM0_bits + GIE);
+}
+
+void init(void) {
+    PM5CTL0 &= ~LOCKLPM5;
+    WDTCTL = WDTPW | WDTHOLD;   // stop watchdog timer
+}
 
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void TIMER0_A0_ISR(void)
 {
     timerCount++;
-
-    // Timer is 1/8 of a second, so count up to 8 for 1 second toggle
-    if (timerCount >= 8)
-    {
+    if (timerCount >= 8)  {
         timerCount = 0;
-
         P1OUT ^= 0x01;
+        P4OUT ^= 0x40;
     }
 }
