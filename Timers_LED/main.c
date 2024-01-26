@@ -7,7 +7,7 @@
 
 void init(void);
 
-uint32_t timerCount = 0;
+uint8_t timerCount = 0;
 
 void clkInit(void)
 {
