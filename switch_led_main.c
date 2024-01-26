@@ -1,8 +1,7 @@
 #include <msp430.h>
 #include <stdint.h>
 
-uint8_t timerCount = 0;
-int code = 0;
+
 /**
  * main.c
  */
@@ -21,7 +20,6 @@ void clkInit(void)
 
     TA0CCR0 = 4096; //Set 32768/8=4096 to set the pulse faster; for Capture & control threshold
     TA0CCTL0 |= 0x0010; //enables ISR on capture & compare mode
-
 }
 
 void switchInit(void)
@@ -35,6 +33,7 @@ int main(void)
 {
     init();
     clkInit();
+    switchInit();
 
     // Configure P1.0 as output for LED1
     P1DIR |= 0x01;  // //BIT0
@@ -48,6 +47,8 @@ int main(void)
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void TIMER0_A0_ISR(void)
 {
+    static uint8_t timerCount = 0;
+    static int code = 0;
     timerCount++;
     if ((P1IN & 0x04) != 0x04) {
         code ^= 1;
@@ -60,6 +61,4 @@ __interrupt void TIMER0_A0_ISR(void)
                 P4OUT ^= 0x01;
         }
     }
-
-
 }
