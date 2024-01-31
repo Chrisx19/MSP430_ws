@@ -146,6 +146,7 @@ void ReceiveRegister(uint8_t const readRegister)
     UCB0IFG &= ~UCSTPIFG;
 }
 
+//pg 845
 void i2cInit(void)
 {
     /* Configure GPIO */
