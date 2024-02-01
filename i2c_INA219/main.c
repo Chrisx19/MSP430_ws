@@ -19,7 +19,7 @@ typedef struct {
     volatile uint8_t txBuffer[TX_SIZE];
     volatile uint8_t rxBuffer[RX_SIZE];
     uint16_t const CALIBRATION_VALUE; //0x2000
-}INA219_CONFIG_t;
+} INA219_CONFIG_t;
 
 uint8_t txByteCount = 0;
 uint8_t rxByteCount = 0;
