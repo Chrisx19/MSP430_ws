@@ -35,8 +35,8 @@ INA219_CONFIG_t *ina = &(INA219_CONFIG_t){
 };
 
 void i2cInit(void);
-void TransmitRegister(uint8_t const reg, uint16_t const config, uint8_t const size);
-void ReceiveRegister(uint8_t const readRegister);
+void INA219TransmitRegister(uint8_t const reg, uint16_t const config, uint8_t const size);
+void INA219ReceiveRegister(uint8_t const readRegister);
 void setCalibration_16V_400mA(void);
 
 uint16_t getCurrent_raw(void)
@@ -81,7 +81,7 @@ int main(void)
   }
 }
 
-//pg 843
+/* pg 843 */
 #pragma vector = USCI_B0_VECTOR
 __interrupt void USCI_B0_ISR(void)
 {
@@ -93,7 +93,7 @@ __interrupt void USCI_B0_ISR(void)
             rxByteCount = 0;
         }
         break;
-    // TODO: Need to update this
+    /* TODO: Need to update this  */
     case USCI_I2C_UCTXIFG0:                 // Vector 24: TXIFG0
         if (receiveFlag_g == 0) {
             if (txByteCount < TX_SIZE) {
@@ -114,7 +114,7 @@ __interrupt void USCI_B0_ISR(void)
   }
 }
 
-void TransmitRegister(uint8_t const reg, uint16_t const config, uint8_t const size)
+void INA219TransmitRegister(uint8_t const reg, uint16_t const config, uint8_t const size)
 {
     receiveFlag_g = 0;
     UCB0CTLW0 |= UCTR;                   // Transmit Mode
@@ -129,7 +129,7 @@ void TransmitRegister(uint8_t const reg, uint16_t const config, uint8_t const si
     __delay_cycles(100);
 }
 
-void ReceiveRegister(uint8_t const readRegister)
+void INA219ReceiveRegister(uint8_t const readRegister)
 {
     receiveFlag_g = 1;
     UCB0CTLW0 |= UCTR;
@@ -146,7 +146,7 @@ void ReceiveRegister(uint8_t const readRegister)
     UCB0IFG &= ~UCSTPIFG;
 }
 
-//pg 845
+/* pg 845 */
 void i2cInit(void)
 {
     /* Configure GPIO */
