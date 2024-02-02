@@ -3,7 +3,7 @@
 #include "init.h"
 
 uint8_t receiveFlag_g = 0;
-uint8_t slavePointerReg_g = 0;
+uint8_t const slavePointerReg_g;
 int l;
 
 float currentmA_g = 0;
