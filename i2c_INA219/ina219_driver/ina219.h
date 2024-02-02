@@ -12,6 +12,19 @@
 #include <string.h>
 #include <stdio.h>
 #include <msp430.h>
+#include "init.h"
+
+#ifdef __MSP430FR4133__
+#define SCL_0 BIT3
+#define SDA_0 BIT2
+#elif defined(__MSP430FR5969__)
+#define SCL_0 BIT7
+#define SDA_0 BIT6
+#endif
+
+#define TX_SIZE 3
+#define RX_SIZE 2
+#define CURRENT_THRESHOLD 30
 
 #define INA219_ADDRESS  (0x40)
 
@@ -114,27 +127,29 @@ typedef enum {
 } INA219_DATA;
 
 typedef struct {
+  volatile uint8_t txBuffer[TX_SIZE];
+  volatile uint8_t rxBuffer[RX_SIZE];
+  uint8_t txByteCount;
+  uint8_t rxByteCount;
+  uint16_t const CALIBRATION_VALUE;  // 0x2000
+} INA219_config_t;
 
-    uint8_t           send[2];
-
-    uint8_t           receive[2];
-
+typedef struct {
     uint16_t          data_read_buff[3];
-
-    uint16_t          calibrationValue;
-
     float             voltage_value;
-
     float             voltage_shunt_value;
-
     float             current_value;
+} INA219_Value_t;
 
 
-}INA219_t;
 
 /******************************************************* Functions for converting and initialize *******************************************************/
 
+void i2cInit(void);
+void INA_Init(INA219_config_t *ina);
+void INA219TransmitRegister(INA219_config_t *ina, uint8_t const reg, uint16_t const config, uint8_t const size);
+void INA219ReceiveRegister(uint8_t readRegister);
 
-
+float getCurrent_mA(INA219_config_t *ina);
 
 #endif /* INA219_DRIVER_INA219_H_ */
