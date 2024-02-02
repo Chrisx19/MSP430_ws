@@ -42,9 +42,9 @@ void setCalibration_16V_400mA(void);
 uint16_t getCurrent_raw(void)
 {
     uint16_t rawData_g = 0x0000;
-    TransmitRegister(INA219_REG_CALIBRATION, ina->CALIBRATION_VALUE, TX_SIZE);
+    INA219TransmitRegister(INA219_REG_CALIBRATION, ina->CALIBRATION_VALUE, TX_SIZE);
 
-    ReceiveRegister(INA219_REG_CURRENT);
+    INA219ReceiveRegister(INA219_REG_CURRENT);
     rawData_g = ((ina->rxBuffer[0] << 8) | ina->rxBuffer[1]);
     return rawData_g;
 }
@@ -114,7 +114,7 @@ __interrupt void USCI_B0_ISR(void)
   }
 }
 
-void INA219TransmitRegister(uint8_t const reg, uint16_t const config, uint8_t const size)
+void INA219INA219TransmitRegister(uint8_t const reg, uint16_t const config, uint8_t const size)
 {
     receiveFlag_g = 0;
     UCB0CTLW0 |= UCTR;                   // Transmit Mode
@@ -129,7 +129,7 @@ void INA219TransmitRegister(uint8_t const reg, uint16_t const config, uint8_t co
     __delay_cycles(100);
 }
 
-void INA219ReceiveRegister(uint8_t const readRegister)
+void INA219INA219ReceiveRegister(uint8_t const readRegister)
 {
     receiveFlag_g = 1;
     UCB0CTLW0 |= UCTR;
@@ -174,9 +174,9 @@ void i2cInit(void)
 
 void setCalibration_16V_400mA(void)
 {
-    TransmitRegister(INA219_REG_CALIBRATION, ina->CALIBRATION_VALUE, TX_SIZE);
+    INA219TransmitRegister(INA219_REG_CALIBRATION, ina->CALIBRATION_VALUE, TX_SIZE);
 
     uint16_t const CONFIG =   SHUNT_BUS_CONT | SADC_12BIT_532US | BADC_12BIT_532US |
                                         PG_GAIN_1_40mV | BRNG_FSR_16V;
-    TransmitRegister(INA219_REG_CONFIG, CONFIG, TX_SIZE);
+    INA219TransmitRegister(INA219_REG_CONFIG, CONFIG, TX_SIZE);
 }
