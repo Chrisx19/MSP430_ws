@@ -81,7 +81,7 @@ int main(void)
     __delay_cycles(2000000);
   }
 }
-
+int l;
 // pg 843
 #pragma vector = USCI_B0_VECTOR
 __interrupt void USCI_B0_ISR(void)
@@ -97,17 +97,17 @@ __interrupt void USCI_B0_ISR(void)
     case USCI_I2C_UCTXIFG0:  // Vector 24: TXIFG0
       if (receiveFlag_g == 0) {
         if (txByteCount < TX_SIZE) {
-          while (UCB0CTLW0 & UCTXSTP);  // Ensure stop condition was sent
+          while (UCB0CTLW0 & UCTXSTP);               // Ensure stop condition was sent
+
           UCB0TXBUF = ina->txBuffer[txByteCount++];  // Send first byte
-          while ((UCB0IFG & UCTXIFG) == 0);                                        // Wait for TX buffer ready
-          UCB0TXBUF = ina->txBuffer[txByteCount++];  // Send second byte
-          while ((UCB0IFG & UCTXIFG) == 0);                                      // Wait for TX buffer ready
-          UCB0TXBUF = ina->txBuffer[txByteCount];  // Send third byte
+          for (l=0;l < (TX_SIZE - 1); l++) {
+              while ((UCB0IFG & UCTXIFG) == 0);
+              UCB0TXBUF = ina->txBuffer[txByteCount++];
+          }
         }
       } else {
-        while (UCB0CTLW0 & UCTXSTP)
-          ;                             // Ensure stop condition was sent
-        UCB0TXBUF = slavePointerReg_g;  // Send the register address
+        while (UCB0CTLW0 & UCTXSTP);                // Ensure stop condition was sent
+        UCB0TXBUF = slavePointerReg_g;              // Send the register address
         receiveFlag_g = 0;
       }
       break;
