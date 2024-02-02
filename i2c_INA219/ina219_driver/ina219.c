@@ -19,7 +19,7 @@ void INA219TransmitRegister(INA219_config_t *ina, uint8_t const reg, uint16_t co
     __delay_cycles(100);
 }
 
-void INA219ReceiveRegister(uint8_t readRegister)
+void INA219ReceiveRegister(uint8_t const readRegister)
 {
     receiveFlag_g = 1;
     UCB0CTLW0 |= UCTR;
@@ -90,7 +90,7 @@ void i2cInit(void)
   /* USCI_B0 */
   UCB0CTLW0 |= UCSWRST;           // Software reset enabled
   UCB0CTLW0 |= UCSSEL_3;          // SMCLK
-  UCB0BRW = 10;                   // Baudrate Prescaler
+  UCB0BRW = 10;                   // Baudrate Prescaler;; 100 khz
   UCB0CTLW0 |= UCMODE_3 | UCMST;  // I2C mode, Master mode
   UCB0I2CSA = INA219_ADDRESS;     // Slave address
 
@@ -101,5 +101,3 @@ void i2cInit(void)
 
   UCB0IE |= UCTXIE | UCRXIE;  // Enable ISR for Tx, and Rx; This goes to ISR routines
 }
-
-
