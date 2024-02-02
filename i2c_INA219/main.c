@@ -163,7 +163,7 @@ void i2cInit(void)
   /* USCI_B0 */
   UCB0CTLW0 |= UCSWRST;           // Software reset enabled
   UCB0CTLW0 |= UCSSEL_3;          // SMCLK
-  UCB0BRW = 10;                   // Baudrate Prescaler
+  UCB0BRW = 10;                   // Baudrate Prescaler to 100khz so 10M / 10 = 10k
   UCB0CTLW0 |= UCMODE_3 | UCMST;  // I2C mode, Master mode
   UCB0I2CSA = INA219_ADDRESS;     // Slave address
 
