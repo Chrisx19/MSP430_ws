@@ -97,14 +97,11 @@ __interrupt void USCI_B0_ISR(void)
     case USCI_I2C_UCTXIFG0:  // Vector 24: TXIFG0
       if (receiveFlag_g == 0) {
         if (txByteCount < TX_SIZE) {
-          while (UCB0CTLW0 & UCTXSTP)
-            ;  // Ensure stop condition was sent
+          while (UCB0CTLW0 & UCTXSTP);  // Ensure stop condition was sent
           UCB0TXBUF = ina->txBuffer[txByteCount++];  // Send first byte
-          while ((UCB0IFG & UCTXIFG) == 0)
-            ;                                        // Wait for TX buffer ready
+          while ((UCB0IFG & UCTXIFG) == 0);                                        // Wait for TX buffer ready
           UCB0TXBUF = ina->txBuffer[txByteCount++];  // Send second byte
-          while ((UCB0IFG & UCTXIFG) == 0)
-            ;                                      // Wait for TX buffer ready
+          while ((UCB0IFG & UCTXIFG) == 0);                                      // Wait for TX buffer ready
           UCB0TXBUF = ina->txBuffer[txByteCount];  // Send third byte
         }
       } else {
