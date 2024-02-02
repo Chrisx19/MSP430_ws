@@ -1,111 +1,105 @@
 #include "ina219.h"
 
-static int INA219_ReadRegister(INA219_t *my_INA, uint8_t const reg)
+extern uint8_t receiveFlag_g;
+extern uint8_t slavePointerReg_g;
+
+void INA219TransmitRegister(INA219_config_t *ina, uint8_t const reg, uint16_t const config,
+                      uint8_t const size)
 {
-//    HAL_StatusTypeDef code = HAL_ERROR;
-//    code = HAL_I2C_Mem_Read(my_INA->I2C_handle, INA219_ADDRESS, reg, I2C_MEMADD_SIZE_8BIT, my_INA->receive, 2, HAL_MAX_DELAY);
-    return 1;
+    receiveFlag_g = 0;
+    UCB0CTLW0 |= UCTR;  // Transmit Mode
+    memset((uint8_t *)ina->txBuffer, 0x00, size);
+
+    UCB0TBCNT = size;  // number of bytes to send
+    ina->txBuffer[0] = reg;
+    ina->txBuffer[1] = (config >> 8) & 0xff;  // MSB
+    ina->txBuffer[2] = config & 0xff;         // LSB
+    ina->txByteCount = 0;                          // Reset byte counter
+    UCB0CTLW0 |= UCTXSTT;                     // I2C TX, start condition
+    __delay_cycles(100);
 }
 
-static int INA219_WriteRegister(INA219_t *my_INA, uint8_t const reg, uint16_t data)
+void INA219ReceiveRegister(uint8_t readRegister)
 {
-    my_INA->send[0] = (data >> 8) & 0xff;  // upper byte
-    my_INA->send[1] = (data >> 0) & 0xff;
-//    return HAL_I2C_Mem_Write(my_INA->I2C_handle, INA219_ADDRESS, reg, I2C_MEMADD_SIZE_8BIT, my_INA->send, 2, HAL_MAX_DELAY);
-    return 1;
+    receiveFlag_g = 1;
+    UCB0CTLW0 |= UCTR;
+    UCB0TBCNT = 1;
+    slavePointerReg_g = readRegister;
+    UCB0CTLW0 |= UCTXSTT;
+    __delay_cycles(100);
+
+    UCB0CTLW0 &= ~UCTR; //flip mode to Rx
+    UCB0TBCNT = 2;
+    UCB0CTLW0 |= UCTXSTT;
+
+    while ((UCB0IFG & UCSTPIFG) == 0);
+    UCB0IFG &= ~UCSTPIFG;
+}
+
+static uint16_t getCurrent_raw(INA219_config_t *ina)
+{
+  uint16_t rawData_g = 0x0000;
+  INA219TransmitRegister(ina, INA219_REG_CALIBRATION, ina->CALIBRATION_VALUE, TX_SIZE);
+
+  INA219ReceiveRegister(INA219_REG_CURRENT);
+  rawData_g = ((ina->rxBuffer[0] << 8) | ina->rxBuffer[1]);
+  return rawData_g;
+}
+
+float getCurrent_mA(INA219_config_t *ina)
+{
+  uint32_t const CURRENT_DIVIDER_MILLI_AMP = 20;
+  float valueDec = getCurrent_raw(ina);
+
+  if (valueDec < CURRENT_THRESHOLD) {
+    valueDec = 0;
+  } else {
+    valueDec /= CURRENT_DIVIDER_MILLI_AMP;
+  }
+  return valueDec;
+}
+
+static void setCalibration_16V_400mA(INA219_config_t *ina)
+{
+  INA219TransmitRegister(ina, INA219_REG_CALIBRATION, ina->CALIBRATION_VALUE, TX_SIZE);
+
+  uint16_t const CONFIG = SHUNT_BUS_CONT | SADC_12BIT_532US | BADC_12BIT_532US |
+                          PG_GAIN_1_40mV | BRNG_FSR_16V;
+  INA219TransmitRegister(ina, INA219_REG_CONFIG, CONFIG, TX_SIZE);
+}
+
+void INA_Init(INA219_config_t *ina)
+{
+    ina->txByteCount = 0;
+    ina->rxByteCount = 0;
+
+    setCalibration_16V_400mA(ina);
+}
+
+// pg 845
+void i2cInit(void)
+{
+  /* Configure GPIO */
+#ifdef __MSP430FR4133__
+  P5SEL0 |= SCL_0;
+  P5SEL0 |= SDA_0;
+#elif defined(__MSP430FR5969__)
+  P1SEL1 |= SCL_0;
+  P1SEL1 |= SDA_0;
+#endif
+  /* USCI_B0 */
+  UCB0CTLW0 |= UCSWRST;           // Software reset enabled
+  UCB0CTLW0 |= UCSSEL_3;          // SMCLK
+  UCB0BRW = 10;                   // Baudrate Prescaler
+  UCB0CTLW0 |= UCMODE_3 | UCMST;  // I2C mode, Master mode
+  UCB0I2CSA = INA219_ADDRESS;     // Slave address
+
+  UCB0TBCNT = 1;          // number of bytes to send
+  UCB0CTLW1 |= UCASTP_2;  // Automatic stop generated
+
+  UCB0CTLW0 &= ~UCSWRST;  // Software reset disabled
+
+  UCB0IE |= UCTXIE | UCRXIE;  // Enable ISR for Tx, and Rx; This goes to ISR routines
 }
 
 
-static void setCalibration_16V_400mA(INA219_t *my_INA)
-{
-
-    uint16_t config           =   SHUNT_BUS_CONT | SADC_12BIT_532US
-                       | BADC_12BIT_532US | PG_GAIN_1_40mV | BRNG_FSR_16V;
-
-    my_INA->calibrationValue = 8192;
-
-    INA219_WriteRegister(my_INA, INA219_REG_CONFIG, config);
-    INA219_WriteRegister(my_INA, INA219_REG_CALIBRATION, my_INA->calibrationValue);
-}
-
-
-static void setCalibration_32V_2A(INA219_t *my_INA)
-{
-    uint16_t config           =   SHUNT_BUS_CONT | SADC_12BIT_532US
-                       | BADC_12BIT_532US | PG_GAIN_8_40mV | BRNG_FSR_32V;
-
-    my_INA->calibrationValue = 0x1000;
-
-    INA219_WriteRegister(my_INA, INA219_REG_CONFIG, config);
-    INA219_WriteRegister(my_INA, INA219_REG_CALIBRATION, my_INA->calibrationValue);
-}
-
-
-static int16_t INA219_GetVoltage_Raw(INA219_t *my_INA)
-{
-    my_INA->data_read_buff[0] = INA219_ReadRegister(my_INA, INA219_REG_BUSVOLTAGE);
-    return my_INA->data_read_buff[0];
-}
-
-static int16_t INA219_GetShuntVoltage_Raw(INA219_t *my_INA)
-{
-    my_INA->data_read_buff[1] = INA219_ReadRegister(my_INA, INA219_REG_SHUNTVOLTAGE);
-    return my_INA->data_read_buff[1];
-}
-
-
-/* NOT DONE */
-float INA219_GetVoltage_V(INA219_t *my_INA)
-{
-    my_INA->voltage_value = INA219_GetVoltage_Raw(my_INA);
-
-    return my_INA->voltage_value;
-}
-
-/* NOT DONE */
-float INA219_GetShuntVoltage_mV(INA219_t *my_INA)
-{
-    my_INA->voltage_shunt_value = INA219_GetShuntVoltage_Raw(my_INA);
-
-    return (my_INA->voltage_shunt_value * 0.01);
-}
-
-static void INA219_GetCurrent_Raw(INA219_t *my_INA)
-{
-    if( INA219_ReadRegister(my_INA, INA219_REG_CURRENT) != 1 ) {
-        my_INA->data_read_buff[CURRENT] = -1;
-        return;
-    }
-    uint16_t raw = (my_INA->receive[0] << 8) | (my_INA->receive[1]);
-
-    my_INA->data_read_buff[CURRENT] = raw;
-}
-
-float INA219_GetCurrent_mA(INA219_t *my_INA)
-{
-    int16_t const CURRENT_DIVIDER_MA = 20;
-    int16_t const CURRENT_MULT_mW = 1.0f;
-    INA219_GetCurrent_Raw(my_INA);
-    my_INA->current_value = my_INA->data_read_buff[CURRENT];
-
-    if ( my_INA->current_value == -1 ) {
-        return -1;
-    }
-
-    return my_INA->current_value / CURRENT_DIVIDER_MA;
-}
-
-//int INA219_init(INA219_t *my_INA, I2C_HandleTypeDef *I2C_handle)
-int INA219_init(INA219_t *my_INA)
-{
-//    my_INA->I2C_handle          = I2C_handle;
-    my_INA->calibrationValue    = 0;
-    my_INA->data_read_buff[3]   = 0;
-    my_INA->voltage_value       = 0;
-    my_INA->voltage_shunt_value = 0;
-    my_INA->current_value       = 0;
-
-    setCalibration_16V_400mA(my_INA);
-
-    return 1;
-}
