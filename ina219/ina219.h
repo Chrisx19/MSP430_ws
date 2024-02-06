@@ -22,7 +22,7 @@
 #define SDA_0 BIT6
 #endif
 
-#define TX_SIZE 3
+#define TX_SIZE 2
 #define RX_SIZE 2
 #define CURRENT_THRESHOLD 30
 
@@ -143,11 +143,11 @@ typedef struct {
 
 /******************************************************* Functions for converting and initialize *******************************************************/
 
-void INA_Init(INA219_config_t *ina);
+void INA_Init(void);
 void i2cInit(void);
-void INA219TransmitRegister(INA219_config_t *ina, uint8_t const reg, uint16_t const config, uint8_t const size);
+void INA219TransmitRegister(uint8_t const readRegister, uint16_t const config);
 void INA219ReceiveRegister(uint8_t readRegister);
 
-float getCurrent_mA(INA219_config_t *ina);
+float getCurrent_mA(void);
 
 #endif /* INA219_DRIVER_INA219_H_ */
