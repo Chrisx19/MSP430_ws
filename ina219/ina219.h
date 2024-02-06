@@ -11,8 +11,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <msp430.h>
-#include "driverlib.h"
+#include "eusci_b_i2c.h"
+#include "gpio.h"
+#include "cs.h"
+#include "pmm.h"
 
 #ifdef __MSP430FR4133__
 #define SCL_0 BIT3
