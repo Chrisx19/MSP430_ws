@@ -10,12 +10,12 @@ INA219_config_t *ina = &(INA219_config_t) {
 
 static uint16_t getCurrent_raw()
 {
-  uint16_t rawData_g = 0x0000;
+  uint16_t rawData = 0x0000;
   INA219TransmitRegister(INA219_REG_CALIBRATION, ina->CALIBRATION_VALUE);
   __delay_cycles(50);
   INA219ReceiveRegister(INA219_REG_CURRENT);
-  rawData_g = ((ina->rxBuffer[0] << 8) | ina->rxBuffer[1]);
-  return rawData_g;
+  rawData = ((ina->rxBuffer[0] << 8) | ina->rxBuffer[1]);
+  return rawData;
 }
 
 float getCurrent_mA()
