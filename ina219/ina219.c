@@ -20,7 +20,7 @@ static uint16_t getCurrent_raw()
 
 float getCurrent_mA()
 {
-  uint32_t const CURRENT_DIVIDER_MILLI_AMP = 20;
+  uint8_t const CURRENT_DIVIDER_MILLI_AMP = 20;
   float valueDec = getCurrent_raw();
 
   if (valueDec < CURRENT_THRESHOLD) {
