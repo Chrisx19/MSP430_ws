@@ -59,8 +59,21 @@ static MCP3008_Error_t SPI_Init(void)
     //Enable SPI module
     EUSCI_B_SPI_enable(EUSCI_B0_BASE);
 
+    EUSCI_B_SPI_clearInterrupt(EUSCI_B0_BASE,
+                               EUSCI_B_SPI_RECEIVE_INTERRUPT);
+    // Enable USCI_B0 RX interrupt
+    EUSCI_B_SPI_enableInterrupt(EUSCI_B0_BASE,
+                                EUSCI_B_SPI_RECEIVE_INTERRUPT);
+
+    EUSCI_B_SPI_clearInterrupt(EUSCI_B0_BASE,
+                               EUSCI_B_SPI_TRANSMIT_INTERRUPT);
+    // Enable USCI_B0 TX interrupt
+    EUSCI_B_SPI_enableInterrupt(EUSCI_B0_BASE,
+                                EUSCI_B_SPI_TRANSMIT_INTERRUPT);
+
     //Wait for slave to initialize
     __delay_cycles(100);
+    __bis_SR_register(GIE);
     return MCP3008_ERR_SUCCESS;
 }
 
@@ -75,7 +88,6 @@ MCP3008_Error_t MCP3008_Init(MCP3008_t *mcp)
         if (SPI_Init() != MCP3008_ERR_SUCCESS) {
             return retVal;
         }
-
         mcp->txBuffer = 0;
         memset(mcp->rxBuffer, 0x00, RX_SIZE);
         mcp->txCounter = 0;
@@ -130,10 +142,9 @@ static MCP3008_Error_t MCP3008_ReceiveRegister(MCP3008_t *mcp)
         return MCP3008_ERR_FAILURE;
     }
     EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, DUMMY_DATA); //Dummy data
-    mcp->rxRaw = EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
+    EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
     mcp->rxBuffer[1] = mcp->rxRaw;
     return MCP3008_ERR_SUCCESS;
-
 }
 
 static MCP3008_Error_t MCP3008_TransmitReceiveRegister(MCP3008_t *mcp, uint8_t const data)
@@ -148,7 +159,7 @@ static MCP3008_Error_t MCP3008_TransmitReceiveRegister(MCP3008_t *mcp, uint8_t c
     }
     mcp->txBuffer = data;
     EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, mcp->txBuffer);
-    mcp->rxRaw = EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
+    EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
     mcp->rxBuffer[0] = mcp->rxRaw;
     return MCP3008_ERR_SUCCESS;
 }
@@ -171,7 +182,19 @@ int MCP3008_ReadChannel_1(MCP3008_t *mcp)
 
     uint16_t adcMSB = (mcp->rxBuffer[0] & 0x03) << 8;
     uint8_t adcLSB = mcp->rxBuffer[1];
-
     adcVal = adcMSB | adcLSB;
     return adcVal;
+}
+
+#pragma vector=USCI_B0_VECTOR
+__interrupt void USCI_B0_ISR(void) {
+    switch(__even_in_range(UCB0IV, USCI_SPI_UCTXIFG)) {
+        case USCI_NONE: break;
+        case USCI_SPI_UCRXIFG: // RX interrupt
+            mcp_g->rxRaw = EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
+            break;
+        case USCI_SPI_UCTXIFG: // TX interrupt
+            break;
+        default: break;
+    }
 }
