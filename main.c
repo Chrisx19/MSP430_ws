@@ -1,19 +1,31 @@
-#include <msp430.h>
-#include "wdt_a.h"
+#include <stdio.h>
+#include <msp430.h> 
 #include "mcp3008.h"
+
+
 /**
- * main.c
+ * hello.c
  */
-int val = 0;
+
+volatile int val = 0;
 MCP3008_t mcp = {0};
+char txBuff[64] = {0x00};
+
 int main(void)
 {
-    WDT_A_hold(WDT_A_BASE);	// stop watchdog timer
-    MCP3008_Init(&mcp);
+	WDTCTL = WDTPW | WDTHOLD;	// stop watchdog timer
+
+    if (MCP3008_Init(&mcp) != MCP3008_ERR_SUCCESS) {
+        return -1;
+    }
+
     __bis_SR_register(GIE);
+
 
     while (1) {
         val = MCP3008_ReadChannel_1(&mcp);
-        __delay_cycles(500000);
+        sprintf(txBuff, "Ch0 Val = %d\r\n", val);
+        printf(txBuff);
+//        __delay_cycles(500);
     }
 }
