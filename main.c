@@ -1,31 +1,27 @@
 #include <stdio.h>
 #include <msp430.h> 
-#include "mcp3008.h"
+#include <mb85rs64.h>
 
-
-/**
- * hello.c
- */
-
-volatile int val = 0;
-MCP3008_t mcp = {0};
-char txBuff[64] = {0x00};
+//volatile int val = 0;
+MB85RS64_t fram = {0};
+//char txBuff[64] = {0x00};
 
 int main(void)
 {
-	WDTCTL = WDTPW | WDTHOLD;	// stop watchdog timer
+    WDTCTL = WDTPW | WDTHOLD;   // stop watchdog timer
 
-    if (MCP3008_Init(&mcp) != MCP3008_ERR_SUCCESS) {
+    if (MB85RS64_Init(&fram) != MB85RS64_ERR_SUCCESS) {
+        printf("Initialize Err\r\n");
         return -1;
     }
-
     __bis_SR_register(GIE);
 
+    MB85RS64_WriteEnableLatch(true);
+    MB85RS64_Write(&fram, 0x0069, 0x69);
+    MB85RS64_WriteEnableLatch(false);
 
+    printf("Passed Initialized\r\n");
     while (1) {
-        val = MCP3008_ReadChannel_1(&mcp);
-        sprintf(txBuff, "Ch0 Val = %d\r\n", val);
-        printf(txBuff);
-//        __delay_cycles(500);
+
     }
 }
