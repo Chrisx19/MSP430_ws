@@ -11,6 +11,7 @@
 #include "cs.h"
 
 #define TX_SIZE 4
+#define RX_SIZE 4
 
 #define FRAM_SR_WRITE_ENABLE_LATCH 0x02
 #define FRAM_SR_BLOCK_PROTECT_0    0x04
@@ -34,6 +35,7 @@ typedef enum {
 
 typedef enum {
     MB85RS64_ERR_SUCCESS = 0,
+    MB85RS64_ERR_NULL_FAILURE,
     MB85RS64_ERR_FAILURE,
     MB85RS64_ERR_SPI_FAILURE,
     MB85RS64_ERR_WRITE_EN_FAILURE,
@@ -41,13 +43,17 @@ typedef enum {
 
 typedef struct {
     uint8_t txBuffer[TX_SIZE];
-    uint8_t rxRaw;
+    uint8_t rxBuffer[RX_SIZE];
     unsigned int txCounter;
     unsigned int rxCounter;
+    uint8_t manufactureID;
+    uint16_t productID;
 } MB85RS64_t;
 
 MB85RS64_Error_t MB85RS64_Init(MB85RS64_t *fram);
 MB85RS64_Error_t MB85RS64_WriteEnableLatch(bool latchEn);
 MB85RS64_Error_t MB85RS64_Write(MB85RS64_t *fram, uint16_t address, uint8_t const data);
+MB85RS64_Error_t MB85RS64_Read(MB85RS64_t *fram, uint16_t address, uint8_t *readData);
+MB85RS64_Error_t MB85RS64_GetStatusRegister(MB85RS64_t *fram, uint8_t *readData);
 
 #endif /* MB85RS64_DRIVER_H_ */
