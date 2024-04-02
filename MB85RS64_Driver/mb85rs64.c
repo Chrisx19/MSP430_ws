@@ -40,9 +40,9 @@ static MB85RS64_Error_t FRAM_SPI_Init(void)
     EUSCI_B_SPI_initMasterParam *param = &(EUSCI_B_SPI_initMasterParam) {
         .selectClockSource    = EUSCI_B_SPI_CLOCKSOURCE_SMCLK,
         .clockSourceFrequency = CS_getSMCLK(),
-        .desiredSpiClock      = 500000,
+        .desiredSpiClock      = 1000000, //1Mhz
         .msbFirst             = EUSCI_B_SPI_MSB_FIRST,
-        .clockPhase           = EUSCI_B_SPI_PHASE_DATA_CHANGED_ONFIRST_CAPTURED_ON_NEXT,
+        .clockPhase           = EUSCI_B_SPI_PHASE_DATA_CAPTURED_ONFIRST_CHANGED_ON_NEXT,
         .clockPolarity        = EUSCI_B_SPI_CLOCKPOLARITY_INACTIVITY_LOW,
         .spiMode              = EUSCI_B_SPI_4PIN_UCxSTE_ACTIVE_LOW
     };
@@ -59,21 +59,58 @@ static MB85RS64_Error_t FRAM_SPI_Init(void)
     //Enable SPI module
     EUSCI_B_SPI_enable(EUSCI_B0_BASE);
 
-    EUSCI_B_SPI_clearInterrupt(EUSCI_B0_BASE,
-                               EUSCI_B_SPI_RECEIVE_INTERRUPT);
-    // Enable USCI_B0 RX interrupt
-    EUSCI_B_SPI_enableInterrupt(EUSCI_B0_BASE,
-                                EUSCI_B_SPI_RECEIVE_INTERRUPT);
-
-    EUSCI_B_SPI_clearInterrupt(EUSCI_B0_BASE,
-                               EUSCI_B_SPI_TRANSMIT_INTERRUPT);
-    // Enable USCI_B0 TX interrupt
-    EUSCI_B_SPI_enableInterrupt(EUSCI_B0_BASE,
-                                EUSCI_B_SPI_TRANSMIT_INTERRUPT);
-
     //Wait for slave to initialize
     __delay_cycles(100);
+//    __bis_SR_register(GIE);
     return MB85RS64_ERR_SUCCESS;
+}
+
+static void MB85RS64_Enable(void)
+{
+    GPIO_setOutputLowOnPin(GPIO_PORT_P1, GPIO_PIN3);
+}
+
+static void MB85RS64_Disable(void)
+{
+    GPIO_setOutputHighOnPin(GPIO_PORT_P1, GPIO_PIN3);
+}
+
+static MB85RS64_Error_t MB85RS64_GetDeviceID(MB85RS64_t *fram)
+{
+    MB85RS64_Error_t retVal = MB85RS64_ERR_SUCCESS;
+    fram->txBuffer[0] = OPCODE_RDID;
+    fram->txBuffer[1] = 0x11;   //DUMMY_DATA
+    fram->txBuffer[2] = 0x22;   //DUMMY_DATA
+    fram->txBuffer[3] = 0x33;   //DUMMY_DATA
+    MB85RS64_Enable();
+    EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, fram->txBuffer[0]);
+    while (!(UCB0IFG & UCTXIFG));
+    EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, fram->txBuffer[1]);
+    fram->rxBuffer[0] = EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
+    while (!(UCB0IFG & UCTXIFG));
+    EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, fram->txBuffer[2]);
+    fram->rxBuffer[1] = EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
+    while (!(UCB0IFG & UCTXIFG));
+    EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, fram->txBuffer[3]);
+    fram->rxBuffer[2] = EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
+    while (!(UCB0IFG & UCTXIFG));
+    EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, 0x99);
+    fram->rxBuffer[3] = EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
+    MB85RS64_Disable();
+
+    if (fram->rxBuffer[1] == 0x7F) {
+        // Device with continuation code (0x7F) in their second byte
+        // Manu ( 1 byte)  - 0x7F - Product (2 bytes)
+        fram->manufactureID = (fram->rxBuffer[0]);
+        fram->productID = (fram->rxBuffer[2] << 8) + fram->rxBuffer[3];
+    } else {
+        // Device without continuation code
+        // Manu ( 1 byte)  - Product (2 bytes)
+        fram->manufactureID = (fram->rxBuffer[0]);
+        fram->productID = (fram->rxBuffer[1] << 8) + fram->rxBuffer[2];
+    }
+
+    return retVal;
 }
 
 MB85RS64_Error_t MB85RS64_Init(MB85RS64_t *fram)
@@ -88,21 +125,18 @@ MB85RS64_Error_t MB85RS64_Init(MB85RS64_t *fram)
             return retVal;
         }
         memset(fram->txBuffer, 0x00, TX_SIZE);
-        fram->rxRaw = 0;
+        memset(fram->rxBuffer, 0x00, RX_SIZE);
         fram->txCounter = 0;
         fram->rxCounter = 0;
+        if (MB85RS64_GetDeviceID(fram) != MB85RS64_ERR_SUCCESS) {
+            return MB85RS64_ERR_FAILURE;
+        }
+
+        if (fram->manufactureID == 0x04) {
+            printf("Fujitsu\r\n");
+        }
     }
     return retVal;
-}
-
-static void MB85RS64_Enable(void)
-{
-    GPIO_setOutputLowOnPin(GPIO_PORT_P1, GPIO_PIN3);
-}
-
-static void MB85RS64_Disable(void)
-{
-    GPIO_setOutputHighOnPin(GPIO_PORT_P1, GPIO_PIN3);
 }
 
 static MB85RS64_Error_t  MB85RS64_Transmit(uint8_t const *data, uint8_t const size)
@@ -115,7 +149,18 @@ static MB85RS64_Error_t  MB85RS64_Transmit(uint8_t const *data, uint8_t const si
     for(i=0; i<size; i++) {
         EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, data[i]);
     }
-    __delay_cycles(1);
+    MB85RS64_Disable();
+    return MB85RS64_ERR_SUCCESS;
+}
+
+static MB85RS64_Error_t MB85RS64_TransmitReceive(MB85RS64_t *fram, uint8_t const *txData, uint8_t const txSize)
+{
+    unsigned int i = 0;
+    MB85RS64_Enable();
+    for(i=0; i<txSize; i++) {
+        EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, txData[i]);
+    }
+    fram->rxBuffer[0] = EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
     MB85RS64_Disable();
     return MB85RS64_ERR_SUCCESS;
 }
@@ -123,15 +168,13 @@ static MB85RS64_Error_t  MB85RS64_Transmit(uint8_t const *data, uint8_t const si
 MB85RS64_Error_t MB85RS64_WriteEnableLatch(bool latchEn)
 {
     MB85RS64_Error_t retVal = MB85RS64_ERR_SUCCESS;
-
     uint8_t cmd = 0;
     if (latchEn == true) {
         cmd = OPCODE_WREN;
     } else {
         cmd = OPCODE_WRDI;
     }
-
-    retVal |= MB85RS64_Transmit(&cmd, 1);
+    retVal = MB85RS64_Transmit(&cmd, 1);
     return retVal;
 }
 
@@ -139,21 +182,25 @@ MB85RS64_Error_t MB85RS64_Write(MB85RS64_t *fram, uint16_t address, uint8_t cons
 {
     MB85RS64_Error_t retVal = MB85RS64_ERR_SUCCESS;
     fram->txBuffer[0] = OPCODE_WRITE;
-    fram->txBuffer[1] = (address >> 8) & 0xFF;
+    fram->txBuffer[1] = address >> 8;
     fram->txBuffer[2] = address & 0xFF;
     fram->txBuffer[3] = data;
-    retVal |= MB85RS64_Transmit(fram->txBuffer, 4);
+    retVal = MB85RS64_Transmit(fram->txBuffer, 4);
     return retVal;
 }
 
-#pragma vector=USCI_B0_VECTOR
-__interrupt void USCI_B0_ISR(void) {
-    switch(__even_in_range(UCB0IV, USCI_SPI_UCTXIFG)) {
-        case USCI_NONE: break;
-        case USCI_SPI_UCRXIFG: // RX interrupt
-            break;
-        case USCI_SPI_UCTXIFG: // TX interrupt
-            break;
-        default: break;
+MB85RS64_Error_t MB85RS64_Read(MB85RS64_t *fram, uint16_t address, uint8_t *readData)
+{
+    if (fram == NULL || readData == NULL) {
+        return MB85RS64_ERR_NULL_FAILURE;
     }
+    MB85RS64_Error_t retVal = MB85RS64_ERR_SUCCESS;
+    uint8_t const DUMMY_DATA = 0x99;
+    fram->txBuffer[0] = OPCODE_READ;
+    fram->txBuffer[1] = (address >> 8) & 0xFF;
+    fram->txBuffer[2] = address & 0xFF;
+    fram->txBuffer[3] = DUMMY_DATA;
+    retVal = MB85RS64_TransmitReceive(fram, fram->txBuffer, 4);
+    *readData = fram->rxBuffer[0];
+    return retVal;
 }
