@@ -75,44 +75,6 @@ static void MB85RS64_Disable(void)
     GPIO_setOutputHighOnPin(GPIO_PORT_P1, GPIO_PIN3);
 }
 
-static MB85RS64_Error_t MB85RS64_GetDeviceID(MB85RS64_t *fram)
-{
-    MB85RS64_Error_t retVal = MB85RS64_ERR_SUCCESS;
-    fram->txBuffer[0] = OPCODE_RDID;
-    fram->txBuffer[1] = 0x11;   //DUMMY_DATA
-    fram->txBuffer[2] = 0x22;   //DUMMY_DATA
-    fram->txBuffer[3] = 0x33;   //DUMMY_DATA
-    MB85RS64_Enable();
-    EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, fram->txBuffer[0]);
-    while (!(UCB0IFG & UCTXIFG));
-    EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, fram->txBuffer[1]);
-    fram->rxBuffer[0] = EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
-    while (!(UCB0IFG & UCTXIFG));
-    EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, fram->txBuffer[2]);
-    fram->rxBuffer[1] = EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
-    while (!(UCB0IFG & UCTXIFG));
-    EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, fram->txBuffer[3]);
-    fram->rxBuffer[2] = EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
-    while (!(UCB0IFG & UCTXIFG));
-    EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, 0x99);
-    fram->rxBuffer[3] = EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
-    MB85RS64_Disable();
-
-    if (fram->rxBuffer[1] == 0x7F) {
-        // Device with continuation code (0x7F) in their second byte
-        // Manu ( 1 byte)  - 0x7F - Product (2 bytes)
-        fram->manufactureID = (fram->rxBuffer[0]);
-        fram->productID = (fram->rxBuffer[2] << 8) + fram->rxBuffer[3];
-    } else {
-        // Device without continuation code
-        // Manu ( 1 byte)  - Product (2 bytes)
-        fram->manufactureID = (fram->rxBuffer[0]);
-        fram->productID = (fram->rxBuffer[1] << 8) + fram->rxBuffer[2];
-    }
-
-    return retVal;
-}
-
 MB85RS64_Error_t MB85RS64_Init(MB85RS64_t *fram)
 {
     MB85RS64_Error_t retVal = MB85RS64_ERR_SUCCESS;
@@ -147,6 +109,7 @@ static MB85RS64_Error_t  MB85RS64_Transmit(uint8_t const *data, uint8_t const si
     unsigned int i = 0;
     MB85RS64_Enable();
     for(i=0; i<size; i++) {
+        while (!(UCB0IFG & UCTXIFG));
         EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, data[i]);
     }
     MB85RS64_Disable();
@@ -158,11 +121,38 @@ static MB85RS64_Error_t MB85RS64_TransmitReceive(MB85RS64_t *fram, uint8_t const
     unsigned int i = 0;
     MB85RS64_Enable();
     for(i=0; i<txSize; i++) {
+        while (!(UCB0IFG & UCTXIFG));
         EUSCI_B_SPI_transmitData(EUSCI_B0_BASE, txData[i]);
+        fram->rxBuffer[i] = EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
     }
-    fram->rxBuffer[0] = EUSCI_B_SPI_receiveData(EUSCI_B0_BASE);
     MB85RS64_Disable();
     return MB85RS64_ERR_SUCCESS;
+}
+
+MB85RS64_Error_t MB85RS64_GetDeviceID(MB85RS64_t *fram)
+{
+    MB85RS64_Error_t retVal = MB85RS64_ERR_SUCCESS;
+    fram->txBuffer[0] = OPCODE_RDID;
+    fram->txBuffer[1] = 0x11;   //DUMMY_DATA
+    fram->txBuffer[2] = 0x22;   //DUMMY_DATA
+    fram->txBuffer[3] = 0x33;   //DUMMY_DATA
+    fram->txBuffer[4] = 0x33;   //DUMMY_DATA
+
+    MB85RS64_TransmitReceive(fram, fram->txBuffer, 5);
+
+    if (fram->rxBuffer[2] == 0x7F) {
+        // Device with continuation code (0x7F) in their second byte
+        // Manu ( 1 byte)  - 0x7F - Product (2 bytes)
+        fram->manufactureID = (fram->rxBuffer[1]);
+        fram->productID = (fram->rxBuffer[3] << 8) + fram->rxBuffer[4];
+    } else {
+        // Device without continuation code
+        // Manu ( 1 byte)  - Product (2 bytes)
+        fram->manufactureID = (fram->rxBuffer[1]);
+        fram->productID = (fram->rxBuffer[2] << 8) + fram->rxBuffer[3];
+    }
+
+    return retVal;
 }
 
 MB85RS64_Error_t MB85RS64_WriteEnableLatch(bool latchEn)
@@ -201,6 +191,6 @@ MB85RS64_Error_t MB85RS64_Read(MB85RS64_t *fram, uint16_t address, uint8_t *read
     fram->txBuffer[2] = address & 0xFF;
     fram->txBuffer[3] = DUMMY_DATA;
     retVal = MB85RS64_TransmitReceive(fram, fram->txBuffer, 4);
-    *readData = fram->rxBuffer[0];
+    *readData = fram->rxBuffer[3];
     return retVal;
 }
