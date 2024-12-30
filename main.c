@@ -69,6 +69,12 @@ EVR_Code EVR(const char *format, ...) {
     return ret;
 }
 
+void resetBuffer() {
+    memset((char *)uartBuffer, 0, UART_BUFFER_SIZE);
+    uartIndex = 0;
+    commandReady = false;
+}
+
 EVR_Code GetCommand(Command *cmd) {
     if (cmd == NULL) {
         return EVR_NULL_ERROR;
@@ -93,13 +99,9 @@ EVR_Code GetCommand(Command *cmd) {
             }
 
             // Respond with command details
-            char response[100];
-            snprintf(response, sizeof(response), "Called %s %s %s %s\n\r",
-                     cmd->command,
-                     count > 0 ? cmd->parameters[0] : "",
+            EVR("Called %s %s %s %s\n\r", cmd->command, count > 0 ? cmd->parameters[0] : "",
                      count > 1 ? cmd->parameters[1] : "",
                      count > 2 ? cmd->parameters[2] : "");
-            EVR(response);
         } else {
             ret = EVR_ERROR;
         }
@@ -158,13 +160,13 @@ __interrupt void USCI_A1_ISR(void) {
                 char receivedCharacter = EUSCI_A_UART_receiveData(EUSCI_A1_BASE);
                 if (receivedCharacter == '\n' || receivedCharacter == '\r') {
                     uartBuffer[uartIndex] = '\0'; // Null-terminate the string
-                    commandReady = true;             // Set the flag to indicate command is ready
-                    uartIndex = 0;                // Reset the buffer index
-                } else {
+                    commandReady = true;         // Set the flag to indicate command is ready
+                    uartIndex = 0;               // Reset the buffer index
+                } else if (!commandReady) {      // Only append if not processing a command
                     uartBuffer[uartIndex++] = receivedCharacter;
                 }
             } else {
-                uartIndex = 0; // Reset on buffer overflow
+                resetBuffer(); // Clear the buffer on overflow
             }
             break;
         case USCI_UART_UCTXIFG: /* Transmit ISR */
