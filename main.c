@@ -1,11 +1,10 @@
-#include <msp430.h>
-#include <driverlib.h>
+
 #include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include "msp430.h"
+#include "driverlib.h"
 
 #define UART_BUFFER_SIZE 128
 
