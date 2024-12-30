@@ -8,7 +8,7 @@
 
 #define UART_BUFFER_SIZE 128
 
-// UART configuration parameters
+// UART configuration parameters set to 9600 baud
 // Datasheet to configure baudrate and UART
 // https://www.ti.com/lit/ug/slau367p/slau367p.pdf?ts=1706206110916&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FMSP430FR5969
 EUSCI_A_UART_initParam uartConfig = {
