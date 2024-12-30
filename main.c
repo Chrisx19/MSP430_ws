@@ -3,7 +3,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdarg.h>
+#include <stdbool.h>
 
 #define UART_BUFFER_SIZE 128
 
@@ -32,13 +34,17 @@ typedef struct {
     char parameters[3][10];
 } Command;
 
+volatile char uartBuffer[UART_BUFFER_SIZE] = {0};
+volatile uint16_t uartIndex = 0;
+volatile bool commandReady = false;
+
 EVR_Code EVR(const char *format, ...) {
     if (format == NULL) {
         return EVR_NULL_ERROR;
     }
 
     EVR_Code ret = EVR_SUCCESS;
-    char buffer[UART_BUFFER_SIZE];
+    char buffer[UART_BUFFER_SIZE] = {0};
     va_list args;
 
     // Start variadic arguments processing
@@ -69,63 +75,34 @@ EVR_Code GetCommand(Command *cmd) {
     }
 
     EVR_Code ret = EVR_SUCCESS;
-    char buffer[50];
-    int index = 0;
 
-    // Read characters until newline or buffer full
-    while (index < sizeof(buffer) - 1) {
-        while (!EUSCI_A_UART_getInterruptStatus(EUSCI_A1_BASE, EUSCI_A_UART_RECEIVE_INTERRUPT_FLAG));
-        char c = EUSCI_A_UART_receiveData(EUSCI_A1_BASE);
+    if (commandReady == true) {
+        commandReady = false; // Reset the flag
 
-        if (c == '\n' || c == 0x13) { // Ends at carriage return
-            buffer[index] = '\0';
-            break;
-        }
-        buffer[index++] = c;
-    }
+        // Parse the command
+        char *token = strtok((char *)uartBuffer, " ");
+        if (token) {
+            memcpy(cmd->command, token, sizeof(cmd->command) - 1);
+            cmd->command[sizeof(cmd->command) - 1] = '\0';
 
-    // Ensure null termination if buffer limit is reached
-    buffer[sizeof(buffer) - 1] = '\0';
-
-    // Parse the command
-    char *token = strtok(buffer, " ");
-    if (token) {
-
-        // Command too long
-        if (strlen(token) >= sizeof(cmd->command)) {
-            return EVR_ERROR;
-        }
-        memcpy(cmd->command, token, sizeof(cmd->command) - 1);
-        cmd->command[sizeof(cmd->command) - 1] = '\0';
-
-        int count = 0;
-        while ((token = strtok(NULL, " ")) && count < 3) {
-            char *end = token + strlen(token) - 1;
-            while (end >= token && (*end == '\r' || *end == '\n')) {
-                *end = '\0';
-                end--;
+            uint16_t count = 0;
+            while ((token = strtok(NULL, " ")) && count < 3) {
+                memcpy(cmd->parameters[count], token, sizeof(cmd->parameters[0]) - 1);
+                cmd->parameters[count][sizeof(cmd->parameters[0]) - 1] = '\0';
+                count++;
             }
 
-            // Parameter too long
-            if (strlen(token) >= sizeof(cmd->parameters[0])) {
-                return EVR_ERROR; 
-            }
-
-            memcpy(cmd->parameters[count], token, sizeof(cmd->parameters[0]) - 1);
-            cmd->parameters[count][sizeof(cmd->parameters[0]) - 1] = '\0';
-            count++;
+            // Respond with command details
+            char response[100];
+            snprintf(response, sizeof(response), "Called %s %s %s %s\n\r",
+                     cmd->command,
+                     count > 0 ? cmd->parameters[0] : "",
+                     count > 1 ? cmd->parameters[1] : "",
+                     count > 2 ? cmd->parameters[2] : "");
+            EVR(response);
+        } else {
+            ret = EVR_ERROR;
         }
-
-        // Cmd Response
-        char response[100];
-        snprintf(response, sizeof(response), "Called %s %s %s %s\n\r",
-                 cmd->command,
-                 count > 0 ? cmd->parameters[0] : "",
-                 count > 1 ? cmd->parameters[1] : "",
-                 count > 2 ? cmd->parameters[2] : "");
-        EVR(response);
-    } else {
-        ret = EVR_ERROR;
     }
 
     return ret;
@@ -149,18 +126,54 @@ void main(void) {
     // Error R LED
     GPIO_setAsOutputPin(GPIO_PORT_P4, GPIO_PIN6);
 
-    // Initialize UART
     if (STATUS_FAIL == EUSCI_A_UART_init(EUSCI_A1_BASE, &uartConfig)) {
         GPIO_setOutputHighOnPin(GPIO_PORT_P4, GPIO_PIN6);
         return;
     }
 
-    // Enable UART module
+    // Enable UART module and interrupts
     EUSCI_A_UART_enable(EUSCI_A1_BASE);
+    EUSCI_A_UART_clearInterrupt(EUSCI_A1_BASE, EUSCI_A_UART_RECEIVE_INTERRUPT);
+    EUSCI_A_UART_enableInterrupt(EUSCI_A1_BASE, EUSCI_A_UART_RECEIVE_INTERRUPT);
+
+    __enable_interrupt();
+
     EVR("System is running...\n\r");
 
     while (1) {
         Command cmd = {0};
         GetCommand(&cmd);
+    }
+}
+
+// UART ISR Pg 784
+// https://www.ti.com/lit/ug/slau367p/slau367p.pdf?ts=1706206110916&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FMSP430FR5969
+#pragma vector=USCI_A1_VECTOR
+__interrupt void USCI_A1_ISR(void) {
+    switch (__even_in_range(UCA1IV,18)) {
+        case USCI_NONE:
+            break;
+        case USCI_UART_UCRXIFG: /* Receive ISR */
+            if (uartIndex < UART_BUFFER_SIZE - 1) {
+                char receivedCharacter = EUSCI_A_UART_receiveData(EUSCI_A1_BASE);
+                if (receivedCharacter == '\n' || receivedCharacter == '\r') {
+                    uartBuffer[uartIndex] = '\0'; // Null-terminate the string
+                    commandReady = true;             // Set the flag to indicate command is ready
+                    uartIndex = 0;                // Reset the buffer index
+                } else {
+                    uartBuffer[uartIndex++] = receivedCharacter;
+                }
+            } else {
+                uartIndex = 0; // Reset on buffer overflow
+            }
+            break;
+        case USCI_UART_UCTXIFG: /* Transmit ISR */
+            break;
+        case USCI_UART_UCSTTIFG:
+            break;
+        case USCI_UART_UCTXCPTIFG:
+            break;    
+        default:
+            break;
     }
 }
