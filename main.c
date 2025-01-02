@@ -5,17 +5,18 @@
 #include <stdbool.h>
 #include "msp430.h"
 #include "driverlib.h"
+#include "msp430fr5969.h"
 
-#define UART_BUFFER_SIZE 128
+#define UART_CMD_SIZE 64
 
-// UART configuration parameters set to 9600 baud
+// UART configuration parameters set to 115200 baud
 // Datasheet to configure baudrate and UART
 // https://www.ti.com/lit/ug/slau367p/slau367p.pdf?ts=1706206110916&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FMSP430FR5969
 EUSCI_A_UART_initParam uartConfig = {
     EUSCI_A_UART_CLOCKSOURCE_SMCLK,    // Clock source: SMCLK
-    103,                              // Clock prescaler
+    8,                              // Clock prescaler
     0,                                // First modulation stage
-    0xDD,                             // Second modulation stage; 0.7503 (Pg 779)
+    0xD6,                             // Second modulation stage; 0.6667 (Pg 779)
     EUSCI_A_UART_NO_PARITY,           // No parity
     EUSCI_A_UART_LSB_FIRST,           // LSB first
     EUSCI_A_UART_ONE_STOP_BIT,        // One stop bit
@@ -33,7 +34,7 @@ typedef struct {
     char parameters[3][10];
 } Command;
 
-volatile char uartBuffer[UART_BUFFER_SIZE] = {0};
+volatile char uartBuffer[UART_CMD_SIZE] = {0};
 volatile uint16_t uartIndex = 0;
 volatile bool commandReady = false;
 
@@ -43,14 +44,14 @@ EVR_Code EVR(const char *format, ...) {
     }
 
     EVR_Code ret = EVR_SUCCESS;
-    char buffer[UART_BUFFER_SIZE] = {0};
+    char buffer[UART_CMD_SIZE] = {0};
     va_list args;
 
     // Start variadic arguments processing
     va_start(args, format);
 
     // Format the string into the buffer
-    if (vsnprintf(buffer, UART_BUFFER_SIZE, format, args) >= UART_BUFFER_SIZE) {
+    if (vsnprintf(buffer, UART_CMD_SIZE, format, args) >= UART_CMD_SIZE) {
         ret = EVR_ERROR; // Buffer overflow error
     }
 
@@ -69,9 +70,8 @@ EVR_Code EVR(const char *format, ...) {
 }
 
 void resetBuffer() {
-    memset((char *)uartBuffer, 0, UART_BUFFER_SIZE);
+    memset((char *)uartBuffer, 0x00, UART_CMD_SIZE);
     uartIndex = 0;
-    commandReady = false;
 }
 
 EVR_Code GetCommand(Command *cmd) {
@@ -82,8 +82,7 @@ EVR_Code GetCommand(Command *cmd) {
     EVR_Code ret = EVR_SUCCESS;
 
     if (commandReady == true) {
-        commandReady = false; // Reset the flag
-
+        commandReady = false;
         // Parse the command
         char *token = strtok((char *)uartBuffer, " ");
         if (token) {
@@ -101,6 +100,7 @@ EVR_Code GetCommand(Command *cmd) {
             EVR("Called %s %s %s %s\n\r", cmd->command, count > 0 ? cmd->parameters[0] : "",
                      count > 1 ? cmd->parameters[1] : "",
                      count > 2 ? cmd->parameters[2] : "");
+            (void) resetBuffer();
         } else {
             ret = EVR_ERROR;
         }
@@ -155,19 +155,16 @@ __interrupt void USCI_A1_ISR(void) {
         case USCI_NONE:
             break;
         case USCI_UART_UCRXIFG: /* Receive ISR */
-            if (uartIndex < UART_BUFFER_SIZE - 1) {
-                char receivedCharacter = EUSCI_A_UART_receiveData(EUSCI_A1_BASE);
-                if (receivedCharacter == '\n' || receivedCharacter == '\r') {
-                    uartBuffer[uartIndex] = '\0'; // Null-terminate the string
-                    commandReady = true;         // Set the flag to indicate command is ready
-                    uartIndex = 0;               // Reset the buffer index
-                } else if (!commandReady) {      // Only append if not processing a command
-                    uartBuffer[uartIndex++] = receivedCharacter;
-                }
+        {
+            char c = EUSCI_A_UART_receiveData(EUSCI_A1_BASE);
+            if (c == '\n' || c == '\r') {
+                uartBuffer[uartIndex] = '\0';
+                commandReady = true; 
             } else {
-                resetBuffer(); // Clear the buffer on overflow
+                uartBuffer[uartIndex++] = c;
             }
             break;
+        }            
         case USCI_UART_UCTXIFG: /* Transmit ISR */
             break;
         case USCI_UART_UCSTTIFG:
