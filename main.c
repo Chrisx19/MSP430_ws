@@ -2,15 +2,20 @@
 #include "EVR/evr.h"
 #include <stdint.h>
 
+#define CAL_ADC_25T85 *((unsigned int *)0x1A24) //1492
+#define CAL_ADC_25T30 *((unsigned int *)0x1A22) //1266
+
 EVR_t evr = {0};
-uint16_t tempADCCombined = 0;
+uint8_t celciusTemperature = 0;
+uint16_t rawValTemperature = 0;
+
 void sendCalibrationConstants();
 void ADC_Init(void);
 void Init_Clock();
 
 void Init_Clock();
 
-void GetAdcValue()
+uint16_t GetAdcValue()
 {
     // Start timer
     Timer_A_initUpModeParam param = {0};
@@ -28,6 +33,7 @@ void GetAdcValue()
                             TIMER_A_CAPTURECOMPARE_REGISTER_0,
                             0x1000
                             );
+    uint16_t adcRawTemperature = 0;
 
     //Enable/Start sampling and conversion
     /*
@@ -41,8 +47,30 @@ void GetAdcValue()
 
     while (ADC12_B_isBusy(ADC12_B_BASE) == ADC12BUSY);
 
-    tempADCCombined=(ADC12MEM0_H<<8) | ADC12MEM0_L;
-    EVR("ADC Temp Combine: %d\n\r", tempADCCombined);
+    adcRawTemperature = ADC12_B_getResults(ADC12_B_BASE, ADC12_B_MEMORY_0);
+    return adcRawTemperature;
+}
+
+uint8_t GetCelciusTemperature(uint16_t rawAdc)
+{
+    uint8_t calculatedCelcius = 0;
+    uint8_t const TEMP_CAL_ENUMERATOR   = 85 - 30;
+    int16_t const TEMP_CAL_DENOMINATOR = CAL_ADC_25T85 - CAL_ADC_25T30;
+    int16_t tempCalMultiplier          = rawAdc - CAL_ADC_25T30;
+
+    // Check for calibration consistency (denominator should not be zero)
+    if (TEMP_CAL_DENOMINATOR == 0)
+    {
+        // Return a default safe value if calibration data is invalid
+        return 0;
+    }
+
+    // Calculated using https://www.ti.com/lit/ug/slau367p/slau367p.pdf?ts=1706206110916&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FMSP430FR5969
+    // Pg 70
+    // Need fraction value for more precise calc therefore float cast is added or can do 55.0
+    calculatedCelcius = tempCalMultiplier * ( (float)TEMP_CAL_ENUMERATOR / TEMP_CAL_DENOMINATOR ) + 30;
+
+    return calculatedCelcius;
 }
 
 void main (void)
@@ -51,17 +79,13 @@ void main (void)
     WDT_A_hold(WDT_A_BASE);
     PMM_unlockLPM5();
 
-    GPIO_setAsPeripheralModuleFunctionInputPin(
-        GPIO_PORT_P1,
-        GPIO_PIN3,
-        GPIO_TERNARY_MODULE_FUNCTION
-    );
-
     EVR_Init(&evr);
     ADC_Init();
 
     while (1) {
-        GetAdcValue();
+        rawValTemperature = GetAdcValue();
+        celciusTemperature = GetCelciusTemperature(rawValTemperature);
+        EVR("Raw Val: %d  Celsius: %d\n\r", rawValTemperature, celciusTemperature);
         __delay_cycles(50000);
     }
 }
