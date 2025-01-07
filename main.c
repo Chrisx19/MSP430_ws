@@ -16,7 +16,7 @@ void GetAdcValue(uint16_t *buffer)
                             ADC12_B_SEQOFCHANNELS);
 
     // Wait until ADC conversion is complete
-    uint32_t timeout = 1000000; // Define a suitable timeout value (adjust as needed)
+    uint32_t timeout = 500000; // Define a suitable timeout value (adjust as needed)
     while (ADC12_B_isBusy(ADC12_B_BASE) == ADC12BUSY)
     {
         if (--timeout == 0)
@@ -50,7 +50,7 @@ void main (void)
     EVR("Before While Loop\n\r");
 
     while (1) {
-        GetAdcValue(adcBufferChannels);            // Perform ADC conversions
+        GetAdcValue(adcBufferChannels);
         EVR("ADC Memory0: %d, Memory1: %d\n\r", adcBufferChannels[0], adcBufferChannels[1]);
         __delay_cycles(100000);  // Delay between conversions
     }
@@ -105,7 +105,7 @@ void ADC_Init(void)
                             ADC12_B_MEMORY_0 | ADC12_B_MEMORY_1, 0);
 
     // Configure internal reference voltage and enable temperature sensor
-    uint32_t timeout = 100000; // Define a timeout value (adjust as needed)
+    uint32_t timeout = 500000; // Define a timeout value (adjust as needed)
     while(Ref_A_isRefGenBusy(REF_A_BASE))
     {
         if (--timeout == 0)
