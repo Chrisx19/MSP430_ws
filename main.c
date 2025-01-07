@@ -47,7 +47,6 @@ void main (void)
     // Initialize EVR and ADC
     EVR_Init(&evr);
     ADC_Init();
-    EVR("Before While Loop\n\r");
 
     while (1) {
         GetAdcValue(adcBufferChannels);
