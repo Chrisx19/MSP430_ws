@@ -9,11 +9,7 @@ EVR_t evr = {0};
 uint8_t celciusTemperature = 0;
 uint16_t rawValTemperature = 0;
 
-void sendCalibrationConstants();
 void ADC_Init(void);
-void Init_Clock();
-
-void Init_Clock();
 
 uint16_t GetAdcValue()
 {
