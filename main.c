@@ -3,122 +3,118 @@
 #include <stdint.h>
 
 EVR_t evr = {0};
-uint16_t tempADCCombined = 0;
+uint16_t adcBufferChannels[2] = {0};
 void sendCalibrationConstants();
 void ADC_Init(void);
 void Init_Clock();
 
-void Init_Clock();
-
-void GetAdcValue()
+void GetAdcValue(uint16_t *buffer)
 {
-    // Start timer
-    Timer_A_initUpModeParam param = {0};
-    param.clockSource = TIMER_A_CLOCKSOURCE_ACLK;
-    param.clockSourceDivider = TIMER_A_CLOCKSOURCE_DIVIDER_1;
-    param.timerPeriod = 13;
-    param.timerInterruptEnable_TAIE = TIMER_A_TAIE_INTERRUPT_DISABLE;
-    param.captureCompareInterruptEnable_CCR0_CCIE = TIMER_A_CCIE_CCR0_INTERRUPT_ENABLE;
-    param.timerClear = TIMER_A_DO_CLEAR;
-    param.startTimer = true;
-    Timer_A_initUpMode(TIMER_A0_BASE, &param);
-
-    // Change timer delay to 1/8 second
-    Timer_A_setCompareValue(TIMER_A0_BASE,
-                            TIMER_A_CAPTURECOMPARE_REGISTER_0,
-                            0x1000
-                            );
-
-    //Enable/Start sampling and conversion
-    /*
-     * Base address of ADC12B Module
-     * Start the conversion into memory buffer 0
-     * Use the single-channel, single-conversion mode
-     */
+    // Start ADC conversion sequence at MEMORY_0 and include MEMORY_1
     ADC12_B_startConversion(ADC12_B_BASE,
-                            ADC12_B_MEMORY_0,
-                            ADC12_B_SINGLECHANNEL);
+                            ADC12_B_START_AT_ADC12MEM0,
+                            ADC12_B_SEQOFCHANNELS);
 
-    while (ADC12_B_isBusy(ADC12_B_BASE) == ADC12BUSY);
+    // Wait until ADC conversion is complete
+    uint32_t timeout = 1000000; // Define a suitable timeout value (adjust as needed)
+    while (ADC12_B_isBusy(ADC12_B_BASE) == ADC12BUSY)
+    {
+        if (--timeout == 0)
+        {
+            EVR("Error: ADC conversion timed out.\n\r");
+            return;
+        }
+    }
 
-    tempADCCombined=(ADC12MEM0_H<<8) | ADC12MEM0_L;
-    EVR("ADC Temp Combine: %d\n\r", tempADCCombined);
+    // Retrieve results from both memory buffers
+    buffer[0] = ADC12_B_getResults(ADC12_B_BASE, ADC12_B_MEMORY_0);
+    buffer[1] = ADC12_B_getResults(ADC12_B_BASE, ADC12_B_MEMORY_1);
 }
 
 void main (void)
 {
-    //Stop WDT
+    // Stop Watchdog Timer and unlock ports
     WDT_A_hold(WDT_A_BASE);
     PMM_unlockLPM5();
 
+    // Configure P1.3 and P1.4 as ADC input pins
     GPIO_setAsPeripheralModuleFunctionInputPin(
         GPIO_PORT_P1,
-        GPIO_PIN3,
+        GPIO_PIN4 | GPIO_PIN3,
         GPIO_TERNARY_MODULE_FUNCTION
     );
 
+    // Initialize EVR and ADC
     EVR_Init(&evr);
     ADC_Init();
+    EVR("Before While Loop\n\r");
 
     while (1) {
-        GetAdcValue();
-        __delay_cycles(50000);
+        GetAdcValue(adcBufferChannels);            // Perform ADC conversions
+        EVR("ADC Memory0: %d, Memory1: %d\n\r", adcBufferChannels[0], adcBufferChannels[1]);
+        __delay_cycles(100000);  // Delay between conversions
     }
 }
 
 void ADC_Init(void)
 {
-    //Initialize the ADC12B Module
-    /*
-     * Base address of ADC12B Module
-     * Use internal ADC12B bit as sample/hold signal to start conversion
-     * USE MODOSC 5MHZ Digital Oscillator as clock source
-     * Use default clock divider/pre-divider of 1
-     * Use Temperature Sensor and Battery Monitor internal channels
-     */
+    // Initialize the ADC12B Module with software trigger and internal oscillator
     ADC12_B_initParam initParam = {0};
     initParam.sampleHoldSignalSourceSelect = ADC12_B_SAMPLEHOLDSOURCE_SC;
     initParam.clockSourceSelect = ADC12_B_CLOCKSOURCE_ADC12OSC;
     initParam.clockSourceDivider = ADC12_B_CLOCKDIVIDER_1;
     initParam.clockSourcePredivider = ADC12_B_CLOCKPREDIVIDER__1;
-    initParam.internalChannelMap = ADC12_B_NOINTCH;
+    initParam.internalChannelMap = ADC12_B_BATTMAP | ADC12_B_TEMPSENSEMAP;
     ADC12_B_init(ADC12_B_BASE, &initParam);
 
     // Enable the ADC12B module
     ADC12_B_enable(ADC12_B_BASE);
 
-    // Sets up the sampling timer pulse mode
+    // Configure sampling timer for multiple samples
     ADC12_B_setupSamplingTimer(ADC12_B_BASE,
                                ADC12_B_CYCLEHOLD_128_CYCLES,
                                ADC12_B_CYCLEHOLD_128_CYCLES,
-                               ADC12_B_MULTIPLESAMPLESDISABLE);
+                               ADC12_B_MULTIPLESAMPLESENABLE);
 
-    // Maps Temperature Sensor input channel to Memory 0 and select voltage references
-    /*
-     * Base address of the ADC12B Module
-     * Configure memory buffer 0
-     * Map input A1 to memory buffer 0
-     * Vref+ = IntBuffer
-     * Vref- = AVss
-     * Memory buffer 0 is not the end of a sequence
-     */
-    ADC12_B_configureMemoryParam configureMemoryParam = {0};
-    configureMemoryParam.memoryBufferControlIndex = ADC12_B_MEMORY_0;
-    configureMemoryParam.inputSourceSelect = ADC12_B_INPUT_A3;
-    configureMemoryParam.refVoltageSourceSelect = ADC12_B_VREFPOS_INTBUF_VREFNEG_VSS;
-    configureMemoryParam.endOfSequence = ADC12_B_NOTENDOFSEQUENCE;
-    configureMemoryParam.windowComparatorSelect = ADC12_B_WINDOW_COMPARATOR_DISABLE;
-    configureMemoryParam.differentialModeSelect = ADC12_B_DIFFERENTIAL_MODE_DISABLE;
-    ADC12_B_configureMemory(ADC12_B_BASE, &configureMemoryParam);
+    // Configure Memory 0 (A4 as input source)
+    ADC12_B_configureMemoryParam configureMemory0 = {0};
+    configureMemory0.memoryBufferControlIndex = ADC12_B_MEMORY_0;
+    configureMemory0.inputSourceSelect = ADC12_B_INPUT_A4;
+    configureMemory0.refVoltageSourceSelect = ADC12_B_VREFPOS_INTBUF_VREFNEG_VSS;
+    configureMemory0.endOfSequence = ADC12_B_NOTENDOFSEQUENCE;
+    configureMemory0.windowComparatorSelect = ADC12_B_WINDOW_COMPARATOR_DISABLE;
+    configureMemory0.differentialModeSelect = ADC12_B_DIFFERENTIAL_MODE_DISABLE;
+    ADC12_B_configureMemory(ADC12_B_BASE, &configureMemory0);
 
-    // Clear memory buffer 0 interrupt
-    ADC12_B_clearInterrupt(ADC12_B_BASE, 0, ADC12_B_IFG0);
+    // Configure Memory 1 (Temperature Sensor as input source)
+    ADC12_B_configureMemoryParam configureMemory1 = {0};
+    configureMemory1.memoryBufferControlIndex = ADC12_B_MEMORY_1;
+    configureMemory1.inputSourceSelect = ADC12_B_INPUT_TCMAP;
+    configureMemory1.refVoltageSourceSelect = ADC12_B_VREFPOS_INTBUF_VREFNEG_VSS;
+    configureMemory1.endOfSequence = ADC12_B_ENDOFSEQUENCE;
+    configureMemory1.windowComparatorSelect = ADC12_B_WINDOW_COMPARATOR_DISABLE;
+    configureMemory1.differentialModeSelect = ADC12_B_DIFFERENTIAL_MODE_DISABLE;
+    ADC12_B_configureMemory(ADC12_B_BASE, &configureMemory1);
 
-    // Enable memory buffer 0 interrupt
-    ADC12_B_enableInterrupt(ADC12_B_BASE, ADC12_B_IE0, 0, 0);
+    // Clear interrupt flags for both memory buffers
+    ADC12_B_clearInterrupt(ADC12_B_BASE, ADC12_B_MEMORY_0 | ADC12_B_MEMORY_1,
+                           ADC12_B_IFG0 | ADC12_B_IFG1);
 
-    // Configure internal reference
-    while(Ref_A_isRefGenBusy(REF_A_BASE));              // If ref generator busy, WAIT
+    // Enable interrupts for both memory buffers
+    ADC12_B_enableInterrupt(ADC12_B_BASE, ADC12_B_IE0 | ADC12_B_IE1,
+                            ADC12_B_MEMORY_0 | ADC12_B_MEMORY_1, 0);
+
+    // Configure internal reference voltage and enable temperature sensor
+    uint32_t timeout = 100000; // Define a timeout value (adjust as needed)
+    while(Ref_A_isRefGenBusy(REF_A_BASE))
+    {
+        if (--timeout == 0)
+        {
+            EVR("Error: Reference generator is busy. Initialization failed.\n\r");
+            return;
+        }
+    }
+
     Ref_A_enableTempSensor(REF_A_BASE);
     Ref_A_setReferenceVoltage(REF_A_BASE, REF_A_VREF2_5V);
     Ref_A_enableReferenceVoltage(REF_A_BASE);
