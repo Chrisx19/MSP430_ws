@@ -81,7 +81,7 @@ void ADC_Init(void)
     initParam.clockSourceSelect = ADC12_B_CLOCKSOURCE_ADC12OSC;
     initParam.clockSourceDivider = ADC12_B_CLOCKDIVIDER_1;
     initParam.clockSourcePredivider = ADC12_B_CLOCKPREDIVIDER__1;
-    initParam.internalChannelMap = ADC12_B_NOINTCH;
+    initParam.internalChannelMap = ADC12_B_TEMPSENSEMAP;
     ADC12_B_init(ADC12_B_BASE, &initParam);
 
     // Enable the ADC12B module
@@ -104,7 +104,7 @@ void ADC_Init(void)
      */
     ADC12_B_configureMemoryParam configureMemoryParam = {0};
     configureMemoryParam.memoryBufferControlIndex = ADC12_B_MEMORY_0;
-    configureMemoryParam.inputSourceSelect = ADC12_B_INPUT_A3;
+    configureMemoryParam.inputSourceSelect = ADC12_B_INPUT_TCMAP;
     configureMemoryParam.refVoltageSourceSelect = ADC12_B_VREFPOS_INTBUF_VREFNEG_VSS;
     configureMemoryParam.endOfSequence = ADC12_B_NOTENDOFSEQUENCE;
     configureMemoryParam.windowComparatorSelect = ADC12_B_WINDOW_COMPARATOR_DISABLE;
