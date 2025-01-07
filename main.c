@@ -2,8 +2,13 @@
 #include "EVR/evr.h"
 #include <stdint.h>
 
+#define CAL_ADC_25T85 *((unsigned int *)0x1A24) //1492
+#define CAL_ADC_25T30 *((unsigned int *)0x1A22) //1266
+
 EVR_t evr = {0};
 uint16_t adcBufferChannels[2] = {0};
+uint8_t celciusTemperature = 0;
+
 void sendCalibrationConstants();
 void ADC_Init(void);
 void Init_Clock();
@@ -31,6 +36,28 @@ void GetAdcValue(uint16_t *buffer)
     buffer[1] = ADC12_B_getResults(ADC12_B_BASE, ADC12_B_MEMORY_1);
 }
 
+uint8_t GetCelciusTemperature(uint16_t rawAdc)
+{
+    uint8_t calculatedCelcius = 0;
+    uint8_t const TEMP_CAL_ENUMERATOR   = 85 - 30;
+    int16_t const TEMP_CAL_DENOMINATOR = CAL_ADC_25T85 - CAL_ADC_25T30;
+    int16_t tempCalMultiplier          = rawAdc - CAL_ADC_25T30;
+
+    // Check for calibration consistency (denominator should not be zero)
+    if (TEMP_CAL_DENOMINATOR == 0)
+    {
+        // Return a default safe value if calibration data is invalid
+        return 0;
+    }
+
+    // Calculated using https://www.ti.com/lit/ug/slau367p/slau367p.pdf?ts=1706206110916&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FMSP430FR5969
+    // Pg 70
+    // Need fraction value for more precise calc therefore float cast is added or can do 55.0
+    calculatedCelcius = tempCalMultiplier * ( (float)TEMP_CAL_ENUMERATOR / TEMP_CAL_DENOMINATOR ) + 30;
+
+    return calculatedCelcius;
+}
+
 void main (void)
 {
     // Stop Watchdog Timer and unlock ports
@@ -40,7 +67,7 @@ void main (void)
     // Configure P1.3 and P1.4 as ADC input pins
     GPIO_setAsPeripheralModuleFunctionInputPin(
         GPIO_PORT_P1,
-        GPIO_PIN4 | GPIO_PIN3,
+        GPIO_PIN3,
         GPIO_TERNARY_MODULE_FUNCTION
     );
 
@@ -50,7 +77,8 @@ void main (void)
 
     while (1) {
         GetAdcValue(adcBufferChannels);
-        EVR("ADC Memory0: %d, Memory1: %d\n\r", adcBufferChannels[0], adcBufferChannels[1]);
+        celciusTemperature = GetCelciusTemperature(adcBufferChannels[1]);
+        EVR("ADC Memory0: %d, Memory1: %d\n\r", adcBufferChannels[0], celciusTemperature);
         __delay_cycles(100000);  // Delay between conversions
     }
 }
@@ -78,7 +106,7 @@ void ADC_Init(void)
     // Configure Memory 0 (A4 as input source)
     ADC12_B_configureMemoryParam configureMemory0 = {0};
     configureMemory0.memoryBufferControlIndex = ADC12_B_MEMORY_0;
-    configureMemory0.inputSourceSelect = ADC12_B_INPUT_A4;
+    configureMemory0.inputSourceSelect = ADC12_B_INPUT_A3;
     configureMemory0.refVoltageSourceSelect = ADC12_B_VREFPOS_INTBUF_VREFNEG_VSS;
     configureMemory0.endOfSequence = ADC12_B_NOTENDOFSEQUENCE;
     configureMemory0.windowComparatorSelect = ADC12_B_WINDOW_COMPARATOR_DISABLE;
