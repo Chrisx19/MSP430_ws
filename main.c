@@ -78,7 +78,7 @@ void main (void)
     while (1) {
         GetAdcValue(adcBufferChannels);
         celciusTemperature = GetCelciusTemperature(adcBufferChannels[1]);
-        EVR("ADC Memory0: %d, Memory1: %d\n\r", adcBufferChannels[0], celciusTemperature);
+        EVR("ADC Memory0: %d, Memory1: %d*C\n\r", adcBufferChannels[0], celciusTemperature);
         __delay_cycles(100000);  // Delay between conversions
     }
 }
@@ -91,7 +91,7 @@ void ADC_Init(void)
     initParam.clockSourceSelect = ADC12_B_CLOCKSOURCE_ADC12OSC;
     initParam.clockSourceDivider = ADC12_B_CLOCKDIVIDER_1;
     initParam.clockSourcePredivider = ADC12_B_CLOCKPREDIVIDER__1;
-    initParam.internalChannelMap = ADC12_B_BATTMAP | ADC12_B_TEMPSENSEMAP;
+    initParam.internalChannelMap = ADC12_B_NOINTCH | ADC12_B_TEMPSENSEMAP;
     ADC12_B_init(ADC12_B_BASE, &initParam);
 
     // Enable the ADC12B module
@@ -103,7 +103,7 @@ void ADC_Init(void)
                                ADC12_B_CYCLEHOLD_128_CYCLES,
                                ADC12_B_MULTIPLESAMPLESENABLE);
 
-    // Configure Memory 0 (A4 as input source)
+    // Configure Memory 0 (A3 as input source)
     ADC12_B_configureMemoryParam configureMemory0 = {0};
     configureMemory0.memoryBufferControlIndex = ADC12_B_MEMORY_0;
     configureMemory0.inputSourceSelect = ADC12_B_INPUT_A3;
