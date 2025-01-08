@@ -31,14 +31,12 @@ void main (void)
 // ========== TIMER INIT ==========
 void Timer_Init(void)
 {
-    // Timer_A0 => 5-second period using ACLK/8 = 4096 Hz
-    // 5 seconds * 4096 = 20480 => CCR0 = 20479
     Timer_A_initUpModeParam timerConfig = {
-        .clockSource = TIMER_A_CLOCKSOURCE_ACLK,              // Use ACLK (~32 kHz)
-        .clockSourceDivider = TIMER_A_CLOCKSOURCE_DIVIDER_1,  // Divide by 8
-        .timerPeriod = 20479,                                 // 5 seconds - 1
+        .clockSource = TIMER_A_CLOCKSOURCE_ACLK,            // Measured ACLK using LogicA 37675 Hz
+        .clockSourceDivider = TIMER_A_CLOCKSOURCE_DIVIDER_8,// Calc div to match 5 second interrupt
+        .timerPeriod = 23546,                               // Calc period for precise 5 second interrupt                 
         .timerInterruptEnable_TAIE = TIMER_A_TAIE_INTERRUPT_DISABLE,
-        .captureCompareInterruptEnable_CCR0_CCIE = TIMER_A_CCIE_CCR0_INTERRUPT_ENABLE,
+        .captureCompareInterruptEnable_CCR0_CCIE = TIMER_A_CCIE_CCR0_INTERRUPT_ENABLE, // Need this for CCRO ISR
         .timerClear = TIMER_A_DO_CLEAR,
         .startTimer = false
     };
@@ -47,12 +45,15 @@ void Timer_Init(void)
     Timer_A_startCounter(TIMER_A2_BASE, TIMER_A_UP_MODE);
 }
 
-// ========== TIMER_A0 ISR ==========
-//#pragma vector=TIMER0_A0_VECTOR //Timer A0
-#pragma vector=TIMER2_A0_VECTOR //Timer_A1
+/* 
+======================== TIMER_A2 ISR ========================
+Use for interval print for telemetry
+Interrupt will happen every ~5 seconds
+Time_interval = (1 / ACLK) * clk_src_div * ( timer_Period + 1)
+Measured by discrete I/O using logic analyzer
+*/
+#pragma vector=TIMER2_A0_VECTOR
 __interrupt void Timer_A2_ISR(void)
 {
-    // This interrupt occurs every 5 seconds
     readyToSendTemp = true;
 }
-
