@@ -2,7 +2,7 @@
 #include "msp430.h"
 #include "EVR/evr.h"
 
-#define CRC_POLY_CCITT_BR 0x1021
+#define CRC_POLY_CCITT_BR 0x1021 //f(x) = x^16 + x^12 + x^5 +1
 #define CRC_SEED 0xFACE
 
 uint16_t CRC_16_Implementation(const uint16_t *data, uint32_t length);
