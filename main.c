@@ -1,79 +1,153 @@
+/* --COPYRIGHT--,BSD
+ * Copyright (c) 2017, Texas Instruments Incorporated
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * *  Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *
+ * *  Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * *  Neither the name of Texas Instruments Incorporated nor the names of
+ *    its contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * --/COPYRIGHT--*/
 #include "driverlib.h"
-#include "msp430.h"
-#include "EVR/evr.h"
 
-#define CRC_POLY_CCITT_BR 0x1021 //f(x) = x^16 + x^12 + x^5 +1
-#define CRC_SEED 0xFACE
+//******************************************************************************
+//!
+//! DMA - Repeated Block Transfer to-and-from RAM, Software Trigger.
+//!
+//!  A 16 word block from 1C00-1C1Fh is transfered to 1C20h-1C3fh using DMA0 in
+//!  a burst block using software DMAREQ trigger. After each transfer, source,
+//!  destination and DMA size are reset to initial software setting because DMA
+//!  transfer mode 5 is used. P1.0 is toggled during DMA transfer only for
+//!  demonstration purposes.
+//!  ** RAM location 0x1C00 - 0x1C3F used - make sure no compiler conflict **
+//!  ACLK = REFO = 32kHz, MCLK = SMCLK = default DCO 1048576Hz
+//!
+//!   Tested on    MSP430FR5969
+//!             -----------------
+//!         /|\|              XIN|-
+//!          | |                 | 32kHz
+//!          --|RST          XOUT|-
+//!            |                 |
+//!            |             P1.0|-> LED
+//!            |                 |
+//!
+//!
+//! This example uses the following peripherals and I/O signals.  You must
+//! review these and change as needed for your own board:
+//! - DMA peripheral
+//! - GPIO Port peripheral
+//!
+//! This example uses the following interrupt handlers.  To use this example
+//! in your own application you must add these interrupt handlers to your
+//! vector table.
+//! - None.
+//!
+//******************************************************************************
 
-uint16_t CRC_16_Implementation(const uint16_t *data, uint32_t length);
+uint8_t temp[14] = {0};
+uint8_t tempDest[14] = {0};
 
 void main (void)
 {
-    //Stop WDT
+    //Stop Watchdog Timer
     WDT_A_hold(WDT_A_BASE);
+
+    //Set P1.0 to output direction
+    GPIO_setAsOutputPin(
+        GPIO_PORT_P1,
+        GPIO_PIN0
+        );
+
+    /*
+     * Disable the GPIO power-on default high-impedance mode to activate
+     * previously configured port settings
+     */
     PMM_unlockLPM5();
 
-    EVR_Init();
+    //Initialize and Setup DMA Channel 0
+    /*
+     * Configure DMA channel 0
+     * Configure channel for repeated block transfers
+     * DMA interrupt flag will be set after every 16 transfers
+     * Use DMA_startTransfer() function to trigger transfers
+     * Transfer Word-to-Word
+     * Trigger upon Rising Edge of Trigger Source Signal
+     */
 
-    uint16_t data[] = {
-                            0xFFFF, // MSB SW Version
-                            0xAFFF, // LSB SW Version
-                            0x0001, // LED status
-                            200,    // Brightness level
-                            1,      // Power Good
-                            4095,   // LED Current
-                            23      // Chip Temperature
-    };
+	DMA_initParam param = {0};
+    param.channelSelect = DMA_CHANNEL_0;
+    param.transferModeSelect = DMA_TRANSFER_REPEATED_BLOCK;
+    param.transferSize = 16;
+    param.triggerSourceSelect = DMA_TRIGGERSOURCE_0; // Trigger manually by software DMAREQ //pg 60 of FR5969 Datasheet
+    param.transferUnitSelect = DMA_SIZE_SRCBYTE_DSTBYTE;
+    param.triggerTypeSelect = DMA_TRIGGER_RISINGEDGE;
+    DMA_init(&param);
 
-    uint16_t crcResultReversed = 0;
-    uint16_t calcCRC = 0;
 
-    (void)CRC_setSeed(CRC_BASE, CRC_SEED);
+    int i = 0;
+    for(i=0;i<14;i++)
+        temp[i] = 0x99;
 
-    int i;
-    for (i=0; i<sizeof(data)/sizeof(uint16_t); i++) {
-        (void)CRC_set16BitDataReversed(CRC_BASE, data[i]);
+    /*
+     * Configure DMA channel 0
+     * Use 0x1C00 as source
+     * Increment source address after every transfer
+     */
+    DMA_setSrcAddress(DMA_CHANNEL_0,
+        (uint32_t)&temp[0],
+        DMA_DIRECTION_INCREMENT);
+
+
+    /*
+     * Configure DMA channel 0
+     * Use 0x1C20 as destination
+     * Increment destination address after every transfer
+     */
+    DMA_setDstAddress(DMA_CHANNEL_0,
+                      (uint32_t)&tempDest[0],
+        DMA_DIRECTION_INCREMENT);
+
+    //Enable transfers on DMA channel 0
+    DMA_enableTransfers(DMA_CHANNEL_0);
+
+    while (1)
+    {
+        //set P1.0
+        GPIO_setOutputHighOnPin(
+            GPIO_PORT_P1,
+            GPIO_PIN0
+            );
+
+        //Start block tranfer on DMA channel 0
+        DMA_startTransfer(DMA_CHANNEL_0);
+
+        //Clear P1.0 LED off
+        GPIO_setOutputLowOnPin(
+            GPIO_PORT_P1,
+            GPIO_PIN0
+            );
+        __no_operation();
     }
-
-    crcResultReversed = CRC_getResult(CRC_BASE);
-
-    calcCRC = CRC_16_Implementation(data, sizeof(data)/sizeof(uint16_t));
-
-    EVR("CRC Module Prototype...\n\r");
-
-    if (calcCRC == crcResultReversed) {
-        EVR("Passed!\n\r");
-        EVR("CRC Calculation   = 0x%X\n\r", calcCRC);
-        EVR("CRC Reversed Calc = 0x%X\n\r", crcResultReversed);
-    } else {
-        EVR("Failed\n\r");
-    }
-
-
-
-    //Enter LPM4, interrupts enabled
-    __bis_SR_register(LPM4_bits);
-    __no_operation();
-
 }
 
-// Saving this here, working code on calculating CRC16 reversed
-uint16_t CRC_16_Implementation(const uint16_t *data, uint32_t length)
-{
-    // Cast the 16-bit pointer to an 8-bit pointer
-    const uint8_t *bytePtr = (const uint8_t *)data;
-
-    uint16_t crc = CRC_SEED;
-    int i, j;
-    for (i = 0; i < (length*2); i++) {
-        crc ^= (bytePtr[i] << 8);
-        for (j = 0; j < 8; j++) {
-            if (crc & 0x8000) {
-                crc = ((crc << 1) ^ CRC_POLY_CCITT_BR);
-            } else {
-                crc <<= 1;
-            }
-        }
-    }
-    return crc;
-}
