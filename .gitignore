@@ -2,8 +2,9 @@
 .settings
 .vscode
 Debug
+driverlib
 targetConfigs
-.cssproject
-.cssproject
+.ccsproject
+.cproject
 .project
 lnk_msp430fr5969.cmd
