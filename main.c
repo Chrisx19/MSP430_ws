@@ -1,30 +1,27 @@
-#include "wdt_a.h"
-#include "ina219.h"
-
-float currentmA_g = 0;
+#include "driverlib.h"
+#include "evr.h"
 
 void main (void)
 {
     //Stop WDT
     WDT_A_hold(WDT_A_BASE);
-    i2cInit();
-    __bis_SR_register(GIE);  // Enables global interrupts
-    //Set P1.0 as an output pin.
-    /*
-     * Select Port 1
-     * Set Pin 0 as output
-     */
-    GPIO_setAsOutputPin(
-        GPIO_PORT_P1,
-        GPIO_PIN0
-    );
 
-    INA_Init();
+    /* Set DCO to 8 MHz */
+    CS_setDCOFreq(CS_DCORSEL_1, CS_DCOFSEL_3);
+    CS_initClockSignal(CS_ACLK, CS_LFMODOSC_SELECT, CS_CLOCK_DIVIDER_1);
+    CS_initClockSignal(CS_SMCLK, CS_DCOCLK_SELECT, CS_CLOCK_DIVIDER_1);
+    CS_initClockSignal(CS_MCLK, CS_DCOCLK_SELECT, CS_CLOCK_DIVIDER_1);
+
+    if (EVR_Init() != EVR_SUCCESS) {
+        __bis_SR_register(LPM0_bits); // CPU off
+        __no_operation(); // Remain in LPM0
+    } else {
+        EVR("EVR Initialized.");
+    }
 
      while (1)
     {
-         currentmA_g = getCurrent_mA();
-         GPIO_toggleOutputOnPin(GPIO_PORT_P1, GPIO_PIN0);
-         __delay_cycles(2000000);
+    	__bis_SR_register(LPM0_bits); // CPU off
+        __no_operation(); // Remain in LPM0
     }
 }
