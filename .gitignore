@@ -2,7 +2,6 @@
 .settings
 .vscode
 Debug
-driverlib
 targetConfigs
 .ccsproject
 .cproject
